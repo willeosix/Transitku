@@ -1,0 +1,131 @@
+openapi: 3.0.3
+info:
+  title: TransitKu Microservice API (Kelompok Aglio)
+  version: 1.0.0
+  description: >
+    API Microservice Pemantau Posisi dan Kapasitas Transportasi Umum Real-Time
+    untuk integrasi aplikasi mobile dan layanan lintas kelompok (Tourism & Education).
+servers:
+  - url: https://transitku.stei.fun/api/v1
+    description: Production Server (STB via Cloudflare Tunnel K01)
+  - url: https://transitku.stei.site/api/v1
+    description: Production Server (STB via Cloudflare Tunnel K02)
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+security:
+  - ApiKeyAuth: []
+  - BearerAuth: []
+paths:
+  /health:
+    get:
+      summary: Cek status kesehatan API Gateway
+      security: []
+      responses:
+        '200':
+          description: Gateway aktif
+  /auth/register:
+    post:
+      summary: Registrasi pengguna aplikasi mobile baru
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, passwordConfirm]
+              properties:
+                name: { type: string, example: "Budi Komuter" }
+                email: { type: string, example: "budi@itb.ac.id" }
+                password: { type: string, example: "rahasia123" }
+                passwordConfirm: { type: string, example: "rahasia123" }
+      responses:
+        '200':
+          description: Akun berhasil dibuat
+  /auth/login:
+    post:
+      summary: Login pengguna untuk mendapatkan token JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identity, password]
+              properties:
+                identity: { type: string, example: "demo@transitku.id" }
+                password: { type: string, example: "transitku123" }
+      responses:
+        '200':
+          description: Login berhasil, mengembalikan token JWT dan profil record
+  /corridors:
+    get:
+      summary: Daftar koridor rute transportasi umum (mendukung filter student_friendly)
+      parameters:
+        - name: filter
+          in: query
+          schema: { type: string, example: "(student_friendly=true)" }
+      responses:
+        '200':
+          description: Daftar koridor transportasi
+        '401':
+          description: X-API-Key atau Bearer token tidak valid
+  /stops:
+    get:
+      summary: Daftar halte dan titik transit (mendukung filter zone_tag tourism/campus)
+      parameters:
+        - name: filter
+          in: query
+          schema: { type: string, example: "(zone_tag='tourism')" }
+        - name: expand
+          in: query
+          schema: { type: string, example: "corridor" }
+      responses:
+        '200':
+          description: Daftar halte beserta koordinat dan landmark sekitar
+  /vehicles:
+    get:
+      summary: Posisi armada real-time, load factor, status GREEN/YELLOW/RED, dan ETA
+      parameters:
+        - name: filter
+          in: query
+          schema: { type: string, example: "(crowd_status='GREEN')" }
+        - name: expand
+          in: query
+          schema: { type: string, example: "corridor" }
+      responses:
+        '200':
+          description: Daftar telemetri armada aktif
+  /crowd-reports:
+    get:
+      summary: Daftar laporan kondisi kepadatan lapangan dari penumpang
+      responses:
+        '200':
+          description: Daftar laporan komuter
+    post:
+      summary: Kirim laporan kondisi kepadatan armada dari lapangan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vehicle, reported_status]
+              properties:
+                vehicle: { type: string }
+                stop: { type: string }
+                reporter_name: { type: string, example: "Penumpang Halte ITB" }
+                reported_status: { type: string, enum: [GREEN, YELLOW, RED] }
+                note: { type: string, example: "Bus masih longgar, banyak kursi kosong" }
+      responses:
+        '200':
+          description: Laporan berhasil tersimpan

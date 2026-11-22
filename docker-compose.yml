@@ -1,0 +1,62 @@
+services:
+  transit-service:
+    build:
+      context: ./pocketbase
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.5
+    ports:
+      - "8093:8090"
+    volumes:
+      - transit_data:/pb_data
+    networks:
+      - transitku_net
+
+  account-service:
+    build:
+      context: ./pocketbase
+    restart: unless-stopped
+    mem_limit: 192m
+    cpus: 0.4
+    ports:
+      - "8094:8090"
+    volumes:
+      - account_data:/pb_data
+    networks:
+      - transitku_net
+
+  gateway:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    mem_limit: 64m
+    cpus: 0.25
+    ports:
+      - "80:80"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - transit-service
+      - account-service
+    networks:
+      - transitku_net
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    mem_limit: 64m
+    cpus: 0.25
+    profiles:
+      - tunnel
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    depends_on:
+      - gateway
+    networks:
+      - transitku_net
+
+volumes:
+  transit_data:
+  account_data:
+
+networks:
+  transitku_net:
+    driver: bridge
