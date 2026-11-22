@@ -128,3 +128,17 @@ curl -X POST "https://transitku.stei.fun/api/v1/crowd-reports" \
    ```bash
    docker compose --profile tunnel up -d
    ```
+
+---
+
+## 6. Aplikasi Mobile (`mobile/`)
+
+Aplikasi mobile **TransitKu** (React Native + Expo TypeScript + Expo Router) berada pada direktori `mobile/` dan terintegrasi langsung dengan API Gateway `https://aglio.stei.site/api/v1`.
+
+Lihat panduan instalasi, arsitektur layar, navigasi, dan daftar endpoint pada [`mobile/README.md`](mobile/README.md).
+
+```bash
+cd mobile
+npm install
+npx expo start
+```
