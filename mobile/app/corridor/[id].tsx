@@ -1,51 +1,75 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { BandungLiveMap } from '../../src/components/BandungLiveMap';
 import { EmptyState } from '../../src/components/EmptyState';
 import { ErrorState } from '../../src/components/ErrorState';
 import { LoadingState } from '../../src/components/LoadingState';
 import { StopCard } from '../../src/components/StopCard';
+import { VehicleCard } from '../../src/components/VehicleCard';
+import { useAuth } from '../../src/context/AuthContext';
 import { getApiErrorMessage } from '../../src/services/api';
-import { getCorridorById, getStopsByCorridor } from '../../src/services/transitService';
+import { scheduleDepartureReminder } from '../../src/services/notificationService';
+import {
+  getCorridorById,
+  getStopsByCorridor,
+  getVehiclesByCorridor,
+} from '../../src/services/transitService';
 import { colors, radius, spacing, typography } from '../../src/theme/tokens';
-import { Corridor, Stop } from '../../src/types/transit';
+import { Corridor, Stop, Vehicle } from '../../src/types/transit';
 import { formatRupiah } from '../../src/utils/format';
 
 export default function CorridorDetailScreen() {
   const params = useLocalSearchParams<{ id?: string; code?: string; name?: string }>();
   const corridorId = typeof params.id === 'string' ? params.id : '';
+  const { favoriteCorridors, toggleFavoriteCorridor } = useAuth();
 
   const [corridor, setCorridor] = useState<Corridor | null>(null);
   const [stops, setStops] = useState<Stop[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reminderNotice, setReminderNotice] = useState<string | null>(null);
 
   const loadDetail = useCallback(
-    async (isRefresh = false) => {
+    async (isRefresh = false, silent = false) => {
       if (!corridorId) {
         setError('ID koridor tidak valid');
         setLoading(false);
         return;
       }
 
-      if (isRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
+      if (!silent) {
+        if (isRefresh) {
+          setRefreshing(true);
+        } else {
+          setLoading(true);
+        }
       }
       setError(null);
 
       try {
-        const [corridorData, stopItems] = await Promise.all([
+        const [corridorData, stopItems, vehicleItems] = await Promise.all([
           getCorridorById(corridorId),
           getStopsByCorridor(corridorId),
+          getVehiclesByCorridor(corridorId),
         ]);
         setCorridor(corridorData);
         setStops(stopItems);
+        setVehicles(vehicleItems);
       } catch (err) {
-        setError(getApiErrorMessage(err));
+        if (!silent) {
+          setError(getApiErrorMessage(err));
+        }
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -58,6 +82,44 @@ export default function CorridorDetailScreen() {
     loadDetail();
   }, [loadDetail]);
 
+  useEffect(() => {
+    if (!corridorId) {
+      return;
+    }
+    const timer = setInterval(() => {
+      loadDetail(false, true);
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [corridorId, loadDetail]);
+
+  const sortedVehicles = useMemo(() => {
+    return [...vehicles].sort((a, b) => a.eta_next_stop_min - b.eta_next_stop_min);
+  }, [vehicles]);
+
+  const nearestVehicle = sortedVehicles[0];
+  const recommendedNextVehicle = useMemo(() => {
+    if (!nearestVehicle || nearestVehicle.crowd_status !== 'RED') {
+      return null;
+    }
+    return (
+      sortedVehicles.find(
+        (v) => v.id !== nearestVehicle.id && v.crowd_status !== 'RED'
+      ) ??
+      sortedVehicles[1] ??
+      null
+    );
+  }, [nearestVehicle, sortedVehicles]);
+
+  const handleScheduleReminder = async (vehicle: Vehicle) => {
+    const result = await scheduleDepartureReminder(
+      vehicle.plate_number,
+      corridor?.name ?? params.name ?? 'Koridor TransitKu',
+      vehicle.eta_next_stop_min
+    );
+    setReminderNotice(result.message);
+  };
+
+  const isFavorite = corridorId ? favoriteCorridors.includes(corridorId) : false;
   const headerTitle = corridor?.code ?? params.code ?? 'Detail koridor';
 
   return (
@@ -65,7 +127,7 @@ export default function CorridorDetailScreen() {
       <Stack.Screen options={{ title: headerTitle }} />
 
       {loading ? (
-        <LoadingState message="Memuat daftar halte koridor" />
+        <LoadingState message="Memuat peta, armada, dan halte koridor" />
       ) : error ? (
         <ErrorState message={error} onRetry={() => loadDetail()} />
       ) : (
@@ -107,11 +169,100 @@ export default function CorridorDetailScreen() {
                 <Feather name="clock" size={14} color={colors.textMuted} />
                 <Text style={styles.infoText}>{corridor.operating_hours}</Text>
               </View>
+
+              <Pressable
+                style={[styles.favActionBtn, isFavorite && styles.favActionBtnActive]}
+                onPress={() => toggleFavoriteCorridor(corridor.id)}
+              >
+                <Feather
+                  name="bookmark"
+                  size={15}
+                  color={isFavorite ? colors.accent : colors.textPrimary}
+                />
+                <Text
+                  style={[styles.favActionText, isFavorite && styles.favActionTextActive]}
+                >
+                  {isFavorite ? 'Tersimpan di Koridor Favorit' : 'Simpan ke Koridor Favorit'}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          <BandungLiveMap
+            vehicles={sortedVehicles}
+            corridors={corridor ? [corridor] : []}
+            stops={stops}
+            height={224}
+            title={`Peta live ${headerTitle}`}
+            subtitle={`${sortedVehicles.length} bus live · ${stops.length} shelter pada koridor`}
+          />
+
+          {reminderNotice ? (
+            <View style={styles.reminderBanner}>
+              <Feather name="bell" size={15} color={colors.statusGreenText} />
+              <Text style={styles.reminderText}>{reminderNotice}</Text>
+              <Pressable onPress={() => setReminderNotice(null)}>
+                <Feather name="x" size={15} color={colors.statusGreenText} />
+              </Pressable>
+            </View>
+          ) : null}
+
+          {nearestVehicle && nearestVehicle.crowd_status === 'RED' && recommendedNextVehicle ? (
+            <View style={styles.recommendCard}>
+              <View style={styles.recommendHeader}>
+                <Feather name="info" size={16} color={colors.accent} />
+                <Text style={styles.recommendTitle}>Rekomendasi armada berikutnya</Text>
+              </View>
+              <Text style={styles.recommendBody}>
+                Armada terdekat {nearestVehicle.plate_number} penuh ({nearestVehicle.load_factor}%).
+                Armada berikutnya {recommendedNextVehicle.plate_number} ({recommendedNextVehicle.crowd_status},{' '}
+                {recommendedNextVehicle.load_factor}%) tiba dengan selisih{' '}
+                {Math.max(
+                  1,
+                  recommendedNextVehicle.eta_next_stop_min - nearestVehicle.eta_next_stop_min ||
+                    nearestVehicle.headway_min
+                )}{' '}
+                menit (headway {nearestVehicle.headway_min} menit).
+              </Text>
+              {recommendedNextVehicle.crowd_status === 'GREEN' ? (
+                <Pressable
+                  style={styles.recommendBtn}
+                  onPress={() => handleScheduleReminder(recommendedNextVehicle)}
+                >
+                  <Feather name="bell" size={14} color={colors.accentText} />
+                  <Text style={styles.recommendBtnText}>
+                    Ingatkan sebelum {recommendedNextVehicle.plate_number} tiba
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
 
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Urutan halte</Text>
+            <Text style={styles.sectionTitle}>Armada live di koridor ini</Text>
+            <Text style={styles.countText}>{sortedVehicles.length} unit</Text>
+          </View>
+
+          {sortedVehicles.length === 0 ? (
+            <EmptyState
+              icon="navigation"
+              title="Belum ada armada aktif"
+              description="Tarik ke bawah untuk memuat ulang posisi bus live"
+            />
+          ) : (
+            <View style={styles.stack}>
+              {sortedVehicles.map((vehicle) => (
+                <VehicleCard
+                  key={vehicle.id}
+                  vehicle={vehicle}
+                  onRemindPress={handleScheduleReminder}
+                />
+              ))}
+            </View>
+          )}
+
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Urutan halte resmi</Text>
             <Text style={styles.countText}>{stops.length} halte</Text>
           </View>
 
@@ -122,7 +273,7 @@ export default function CorridorDetailScreen() {
               description="Koridor ini belum memiliki data halte pada server"
             />
           ) : (
-            <View style={styles.stopList}>
+            <View style={styles.stack}>
               {stops.map((stop, index) => (
                 <StopCard
                   key={stop.id}
@@ -160,6 +311,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    flexWrap: 'wrap',
   },
   codePlate: {
     paddingHorizontal: spacing.sm,
@@ -213,6 +365,85 @@ const styles = StyleSheet.create({
     ...typography.body,
     flex: 1,
   },
+  favActionBtn: {
+    marginTop: spacing.sm,
+    height: 40,
+    borderRadius: radius.control,
+    backgroundColor: colors.raised,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  favActionBtnActive: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accentBorder,
+  },
+  favActionText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
+    color: colors.textPrimary,
+  },
+  favActionTextActive: {
+    color: colors.accent,
+  },
+  reminderBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.control,
+    backgroundColor: colors.statusGreenBg,
+    borderWidth: 1,
+    borderColor: colors.statusGreenBorder,
+  },
+  reminderText: {
+    ...typography.body,
+    color: colors.statusGreenText,
+    flex: 1,
+  },
+  recommendCard: {
+    backgroundColor: colors.accentSoft,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.accentBorder,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  recommendHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  recommendTitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  recommendBody: {
+    ...typography.body,
+    color: colors.textPrimary,
+  },
+  recommendBtn: {
+    marginTop: spacing.xs,
+    height: 40,
+    borderRadius: radius.control,
+    backgroundColor: colors.accent,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  recommendBtnText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
+    color: colors.accentText,
+  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -226,7 +457,7 @@ const styles = StyleSheet.create({
     ...typography.meta,
     ...typography.tabular,
   },
-  stopList: {
+  stack: {
     gap: spacing.md,
   },
 });

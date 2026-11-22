@@ -13,8 +13,18 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing, typography } from '../theme/tokens';
-import { CreateCrowdReportPayload, CrowdStatus, Stop, Vehicle } from '../types/transit';
-import { formatCrowdLabel } from '../utils/format';
+import {
+  CreateCrowdReportPayload,
+  CrowdStatus,
+  ReportType,
+  Stop,
+  Vehicle,
+} from '../types/transit';
+import {
+  formatCoordinates,
+  formatCrowdLabel,
+  formatReportTypeLabel,
+} from '../utils/format';
 
 interface CrowdReportModalProps {
   visible: boolean;
@@ -22,11 +32,15 @@ interface CrowdReportModalProps {
   stops: Stop[];
   initialVehicleId?: string;
   defaultReporterName?: string;
+  deviceLatitude?: number;
+  deviceLongitude?: number;
+  inBandung?: boolean;
   onClose: () => void;
   onSubmit: (payload: CreateCrowdReportPayload) => Promise<void>;
 }
 
 const statusOptions: CrowdStatus[] = ['GREEN', 'YELLOW', 'RED'];
+const reportTypeOptions: ReportType[] = ['FULL', 'QUEUE', 'TRAFFIC'];
 
 export function CrowdReportModal({
   visible,
@@ -34,13 +48,17 @@ export function CrowdReportModal({
   stops,
   initialVehicleId,
   defaultReporterName = '',
+  deviceLatitude,
+  deviceLongitude,
+  inBandung = true,
   onClose,
   onSubmit,
 }: CrowdReportModalProps) {
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [selectedStopId, setSelectedStopId] = useState('');
   const [reporterName, setReporterName] = useState(defaultReporterName);
-  const [reportedStatus, setReportedStatus] = useState<CrowdStatus>('GREEN');
+  const [reportType, setReportType] = useState<ReportType>('FULL');
+  const [reportedStatus, setReportedStatus] = useState<CrowdStatus>('RED');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -50,7 +68,8 @@ export function CrowdReportModal({
       setSelectedVehicleId(initialVehicleId ?? vehicles[0]?.id ?? '');
       setSelectedStopId('');
       setReporterName(defaultReporterName);
-      setReportedStatus('GREEN');
+      setReportType('FULL');
+      setReportedStatus('RED');
       setNote('');
       setErrorMessage(null);
     }
@@ -66,6 +85,9 @@ export function CrowdReportModal({
       return;
     }
 
+    const hasGps = typeof deviceLatitude === 'number' && typeof deviceLongitude === 'number';
+    const trustScore = hasGps ? (inBandung ? 90 : 55) : 75;
+
     setErrorMessage(null);
     setSubmitting(true);
     try {
@@ -73,7 +95,11 @@ export function CrowdReportModal({
         vehicle: selectedVehicleId,
         stop: selectedStopId || undefined,
         reporter_name: reporterName.trim(),
+        report_type: reportType,
         reported_status: reportedStatus,
+        latitude: deviceLatitude,
+        longitude: deviceLongitude,
+        trust_score: trustScore,
         note: note.trim(),
       });
       onClose();
@@ -98,7 +124,7 @@ export function CrowdReportModal({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>Kirim laporan kepadatan</Text>
+          <Text style={styles.title}>Kirim laporan warga</Text>
           <Pressable
             style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}
             onPress={onClose}
@@ -118,6 +144,48 @@ export function CrowdReportModal({
               <Text style={styles.errorText}>{errorMessage}</Text>
             </View>
           ) : null}
+
+          <View style={styles.gpsBanner}>
+            <Feather name="crosshair" size={15} color={colors.accent} />
+            <Text style={styles.gpsText}>
+              {typeof deviceLatitude === 'number' && typeof deviceLongitude === 'number'
+                ? `GPS terdeteksi: ${formatCoordinates(deviceLatitude, deviceLongitude)} (${inBandung ? 'Dalam Bandung' : 'Luar Bandung'})`
+                : 'GPS tidak aktif, laporan dikirim tanpa koordinat perangkat'}
+            </Text>
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Jenis laporan</Text>
+            <View style={styles.typeStack}>
+              {reportTypeOptions.map((type) => {
+                const active = reportType === type;
+                return (
+                  <Pressable
+                    key={type}
+                    style={[styles.typeOption, active && styles.typeOptionActive]}
+                    onPress={() => setReportType(type)}
+                  >
+                    <Text
+                      style={[
+                        styles.typeOptionText,
+                        active && styles.typeOptionTextActive,
+                      ]}
+                    >
+                      {formatReportTypeLabel(type)}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.typeCodeText,
+                        active && styles.typeOptionTextActive,
+                      ]}
+                    >
+                      {type}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Pilih armada</Text>
@@ -168,7 +236,7 @@ export function CrowdReportModal({
                   Tidak ditentukan
                 </Text>
               </Pressable>
-              {stops.map((stop) => {
+              {stops.slice(0, 25).map((stop) => {
                 const active = stop.id === selectedStopId;
                 return (
                   <Pressable
@@ -191,7 +259,7 @@ export function CrowdReportModal({
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Kondisi kepadatan</Text>
+            <Text style={styles.label}>Status kepadatan</Text>
             <View style={styles.statusRow}>
               {statusOptions.map((status) => {
                 const active = reportedStatus === status;
@@ -241,7 +309,7 @@ export function CrowdReportModal({
               style={[styles.input, styles.textArea]}
               value={note}
               onChangeText={setNote}
-              placeholder="Contoh: Kursi bagian belakang masih tersedia"
+              placeholder="Contoh: Antrean padat di pintu depan halte"
               placeholderTextColor={colors.textMuted}
               multiline
               numberOfLines={3}
@@ -318,6 +386,22 @@ const styles = StyleSheet.create({
     color: colors.statusRedText,
     flex: 1,
   },
+  gpsBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.control,
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.accentBorder,
+  },
+  gpsText: {
+    ...typography.meta,
+    color: colors.accent,
+    flex: 1,
+    ...typography.tabular,
+  },
   fieldGroup: {
     gap: spacing.sm,
   },
@@ -326,6 +410,39 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: '500',
     color: colors.textPrimary,
+  },
+  typeStack: {
+    gap: spacing.sm,
+  },
+  typeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderRadius: radius.control,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+  },
+  typeOptionActive: {
+    backgroundColor: colors.textPrimary,
+    borderColor: colors.textPrimary,
+  },
+  typeOptionText: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '500',
+    color: colors.textPrimary,
+  },
+  typeCodeText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '500',
+    color: colors.textMuted,
+  },
+  typeOptionTextActive: {
+    color: colors.surface,
   },
   optionRow: {
     flexDirection: 'row',

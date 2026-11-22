@@ -13,9 +13,12 @@ import { CrowdReportModal } from '../../src/components/CrowdReportModal';
 import { EmptyState } from '../../src/components/EmptyState';
 import { ErrorState } from '../../src/components/ErrorState';
 import { LoadingState } from '../../src/components/LoadingState';
-import { VehicleCard } from '../../src/components/VehicleCard';
 import { useAuth } from '../../src/context/AuthContext';
 import { getApiErrorMessage } from '../../src/services/api';
+import {
+  DeviceLocationResult,
+  getCurrentBandungLocation,
+} from '../../src/services/locationService';
 import {
   createCrowdReport,
   getCrowdReports,
@@ -30,16 +33,16 @@ import {
   Vehicle,
 } from '../../src/types/transit';
 
-export default function VehiclesScreen() {
+export default function ReportsScreen() {
   const { user } = useAuth();
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [reports, setReports] = useState<CrowdReport[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [stops, setStops] = useState<Stop[]>([]);
+  const [locationInfo, setLocationInfo] = useState<DeviceLocationResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string | undefined>(undefined);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
   const loadData = useCallback(async (isRefresh = false) => {
@@ -51,14 +54,16 @@ export default function VehiclesScreen() {
     setError(null);
 
     try {
-      const [vehicleItems, reportItems, stopItems] = await Promise.all([
-        getVehicles(),
+      const [reportItems, vehicleItems, stopItems, loc] = await Promise.all([
         getCrowdReports(),
+        getVehicles(),
         getStops(),
+        getCurrentBandungLocation(),
       ]);
-      setVehicles(vehicleItems);
       setReports(reportItems);
+      setVehicles(vehicleItems);
       setStops(stopItems);
+      setLocationInfo(loc);
     } catch (err) {
       setError(getApiErrorMessage(err));
     } finally {
@@ -71,15 +76,10 @@ export default function VehiclesScreen() {
     loadData();
   }, [loadData]);
 
-  const handleOpenReportModal = (vehicle?: Vehicle) => {
-    setSelectedVehicleId(vehicle?.id ?? vehicles[0]?.id);
-    setModalVisible(true);
-  };
-
   const handleSubmitReport = async (payload: CreateCrowdReportPayload) => {
     try {
       await createCrowdReport(payload);
-      setFeedbackMessage('Laporan kepadatan berhasil dikirim');
+      setFeedbackMessage('Laporan warga berhasil dikirim dan tersimpan');
       await loadData(true);
     } catch (err) {
       throw new Error(getApiErrorMessage(err));
@@ -89,7 +89,7 @@ export default function VehiclesScreen() {
   if (loading) {
     return (
       <View style={styles.screen}>
-        <LoadingState message="Memuat telemetri armada dan laporan" />
+        <LoadingState message="Memuat laporan warga Bandung" />
       </View>
     );
   }
@@ -118,11 +118,11 @@ export default function VehiclesScreen() {
 
         <Pressable
           style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}
-          onPress={() => handleOpenReportModal()}
+          onPress={() => setModalVisible(true)}
           disabled={vehicles.length === 0}
         >
           <Feather name="plus" size={15} color={colors.accentText} />
-          <Text style={styles.primaryBtnText}>Lapor kepadatan</Text>
+          <Text style={styles.primaryBtnText}>Kirim laporan cepat</Text>
         </Pressable>
       </View>
 
@@ -146,59 +146,34 @@ export default function VehiclesScreen() {
           </View>
         ) : null}
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Armada aktif</Text>
-            <Text style={styles.countText}>{vehicles.length} unit</Text>
-          </View>
-
-          {vehicles.length === 0 ? (
-            <EmptyState
-              icon="navigation"
-              title="Belum ada armada aktif"
-              description="Tarik ke bawah atau tekan Refresh untuk memuat ulang"
-            />
-          ) : (
-            <View style={styles.stack}>
-              {vehicles.map((vehicle) => (
-                <VehicleCard
-                  key={vehicle.id}
-                  vehicle={vehicle}
-                  onReportPress={(item) => handleOpenReportModal(item)}
-                />
-              ))}
-            </View>
-          )}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Laporan tervalidasi</Text>
+          <Text style={styles.countText}>{reports.length} laporan</Text>
         </View>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Laporan komuter terbaru</Text>
-            <Text style={styles.countText}>{reports.length} laporan</Text>
+        {reports.length === 0 ? (
+          <EmptyState
+            icon="message-square"
+            title="Belum ada laporan warga"
+            description="Kirim laporan kondisi armada penuh, antrean halte, atau macet"
+          />
+        ) : (
+          <View style={styles.stack}>
+            {reports.map((report) => (
+              <CrowdReportCard key={report.id} report={report} />
+            ))}
           </View>
-
-          {reports.length === 0 ? (
-            <EmptyState
-              icon="message-square"
-              title="Belum ada laporan kepadatan"
-              description="Jadilah komuter pertama yang melaporkan kondisi kabin"
-            />
-          ) : (
-            <View style={styles.stack}>
-              {reports.map((report) => (
-                <CrowdReportCard key={report.id} report={report} />
-              ))}
-            </View>
-          )}
-        </View>
+        )}
       </ScrollView>
 
       <CrowdReportModal
         visible={modalVisible}
         vehicles={vehicles}
         stops={stops}
-        initialVehicleId={selectedVehicleId}
         defaultReporterName={user?.name ?? ''}
+        deviceLatitude={locationInfo?.latitude}
+        deviceLongitude={locationInfo?.longitude}
+        inBandung={locationInfo?.inBandung ?? true}
         onClose={() => setModalVisible(false)}
         onSubmit={handleSubmitReport}
       />
@@ -260,7 +235,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.lg,
-    gap: spacing.xxl,
+    gap: spacing.md,
   },
   successBanner: {
     flexDirection: 'row',
@@ -276,9 +251,6 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.statusGreenText,
     flex: 1,
-  },
-  section: {
-    gap: spacing.md,
   },
   sectionHeader: {
     flexDirection: 'row',

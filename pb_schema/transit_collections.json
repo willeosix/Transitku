@@ -121,11 +121,27 @@
         "required": false,
         "system": false,
         "type": "bool"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "select2546616235",
+        "maxSelect": 1,
+        "name": "mode",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "select",
+        "values": [
+          "Bus Kota",
+          "KRL",
+          "Angkot"
+        ]
       }
     ],
     "indexes": [],
     "created": "2026-11-22 12:51:45.477Z",
-    "updated": "2026-11-22 12:51:45.477Z",
+    "updated": "2026-11-22 15:05:28.803Z",
     "system": false
   },
   {
@@ -251,11 +267,26 @@
         "required": false,
         "system": false,
         "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "help": "",
+        "hidden": false,
+        "id": "text2917696981",
+        "max": 0,
+        "min": 0,
+        "name": "facilities",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
       }
     ],
     "indexes": [],
     "created": "2026-11-22 12:51:45.562Z",
-    "updated": "2026-11-22 12:51:45.562Z",
+    "updated": "2026-11-22 15:05:28.892Z",
     "system": false
   },
   {
@@ -548,11 +579,76 @@
         "required": false,
         "system": false,
         "type": "bool"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "select4294097618",
+        "maxSelect": 1,
+        "name": "report_type",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "select",
+        "values": [
+          "FULL",
+          "QUEUE",
+          "TRAFFIC"
+        ]
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number1092145443",
+        "max": null,
+        "min": null,
+        "name": "latitude",
+        "onlyInt": false,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number2246143851",
+        "max": null,
+        "min": null,
+        "name": "longitude",
+        "onlyInt": false,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number1584356231",
+        "max": null,
+        "min": null,
+        "name": "trust_score",
+        "onlyInt": false,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "hidden": false,
+        "id": "autodate2990389176",
+        "name": "created",
+        "onCreate": true,
+        "onUpdate": false,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
       }
     ],
     "indexes": [],
     "created": "2026-11-22 12:51:45.680Z",
-    "updated": "2026-11-22 12:51:45.680Z",
+    "updated": "2026-11-22 15:05:28.987Z",
     "system": false
   }
 ]

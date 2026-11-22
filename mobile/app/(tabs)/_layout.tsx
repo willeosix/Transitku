@@ -35,11 +35,11 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Koridor',
-          headerTitle: 'TransitKu · Koridor',
+          title: 'Beranda',
+          headerTitle: 'TransitKu · Bandung',
           tabBarIcon: ({ color }) => (
             <Feather
-              name="git-branch"
+              name="home"
               size={18}
               color={typeof color === 'string' ? color : colors.textMuted}
             />
@@ -47,13 +47,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="stops"
+        name="corridors"
         options={{
-          title: 'Halte & Wisata',
-          headerTitle: 'Halte & Wisata',
+          title: 'Koridor & Peta',
+          headerTitle: 'Koridor & Peta',
           tabBarIcon: ({ color }) => (
             <Feather
-              name="map-pin"
+              name="map"
               size={18}
               color={typeof color === 'string' ? color : colors.textMuted}
             />
@@ -61,13 +61,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="vehicles"
+        name="reports"
         options={{
-          title: 'Armada & Lapor',
-          headerTitle: 'Armada & Lapor',
+          title: 'Laporan Warga',
+          headerTitle: 'Laporan Warga',
           tabBarIcon: ({ color }) => (
             <Feather
-              name="navigation"
+              name="message-square"
               size={18}
               color={typeof color === 'string' ? color : colors.textMuted}
             />

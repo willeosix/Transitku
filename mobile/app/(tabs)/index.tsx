@@ -1,58 +1,102 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { CorridorCard } from '../../src/components/CorridorCard';
 import { EmptyState } from '../../src/components/EmptyState';
 import { ErrorState } from '../../src/components/ErrorState';
-import { FilterChips, FilterOption } from '../../src/components/FilterChips';
 import { LoadingState } from '../../src/components/LoadingState';
+import { StopCard } from '../../src/components/StopCard';
+import { VehicleCard } from '../../src/components/VehicleCard';
+import { useAuth } from '../../src/context/AuthContext';
 import { getApiErrorMessage } from '../../src/services/api';
-import { getCorridors } from '../../src/services/transitService';
-import { colors, spacing, typography } from '../../src/theme/tokens';
-import { Corridor } from '../../src/types/transit';
+import {
+  DeviceLocationResult,
+  getCurrentBandungLocation,
+} from '../../src/services/locationService';
+import {
+  getCorridors,
+  getStops,
+  getVehicles,
+} from '../../src/services/transitService';
+import { colors, radius, spacing, typography } from '../../src/theme/tokens';
+import { Corridor, Stop, Vehicle } from '../../src/types/transit';
+import { BANDUNG_CENTER, calculateDistanceKm } from '../../src/utils/geo';
 
-type CorridorFilter = 'all' | 'student';
-
-const filterOptions: FilterOption<CorridorFilter>[] = [
-  { value: 'all', label: 'Semua' },
-  { value: 'student', label: 'Ramah Pelajar' },
-];
-
-export default function CorridorsScreen() {
+export default function HomeScreen() {
   const router = useRouter();
-  const [filter, setFilter] = useState<CorridorFilter>('all');
+  const { favoriteCorridors, toggleFavoriteCorridor } = useAuth();
+
+  const [locationInfo, setLocationInfo] = useState<DeviceLocationResult | null>(null);
   const [corridors, setCorridors] = useState<Corridor[]>([]);
+  const [stops, setStops] = useState<Stop[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchCorridors = useCallback(
-    async (selectedFilter: CorridorFilter, isRefresh = false) => {
-      if (isRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-      setError(null);
+  const loadHome = useCallback(async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    setError(null);
 
-      try {
-        const items = await getCorridors(selectedFilter === 'student');
-        setCorridors(items);
-      } catch (err) {
-        setError(getApiErrorMessage(err));
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    []
-  );
+    try {
+      const [loc, corridorItems, stopItems, vehicleItems] = await Promise.all([
+        getCurrentBandungLocation(),
+        getCorridors(),
+        getStops(),
+        getVehicles(),
+      ]);
+      setLocationInfo(loc);
+      setCorridors(corridorItems);
+      setStops(stopItems);
+      setVehicles(vehicleItems);
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    fetchCorridors(filter);
-  }, [filter, fetchCorridors]);
+    loadHome();
+  }, [loadHome]);
 
-  const handleOpenCorridor = (corridor: Corridor) => {
+  const refLat = locationInfo?.latitude ?? BANDUNG_CENTER.latitude;
+  const refLng = locationInfo?.longitude ?? BANDUNG_CENTER.longitude;
+
+  const nearestStops = useMemo(() => {
+    return stops
+      .map((stop) => ({
+        stop,
+        distanceKm: calculateDistanceKm(refLat, refLng, stop.latitude, stop.longitude),
+      }))
+      .sort((a, b) => a.distanceKm - b.distanceKm)
+      .slice(0, 5);
+  }, [stops, refLat, refLng]);
+
+  const savedCorridors = useMemo(() => {
+    return corridors.filter((c) => favoriteCorridors.includes(c.id));
+  }, [corridors, favoriteCorridors]);
+
+  const activeVehicles = useMemo(() => {
+    return [...vehicles]
+      .sort((a, b) => a.eta_next_stop_min - b.eta_next_stop_min)
+      .slice(0, 4);
+  }, [vehicles]);
+
+  const openCorridor = (corridor: Corridor) => {
     router.push({
       pathname: '/corridor/[id]',
       params: {
@@ -63,49 +107,135 @@ export default function CorridorsScreen() {
     });
   };
 
+  if (loading) {
+    return (
+      <View style={styles.screen}>
+        <LoadingState message="Memuat beranda transportasi Bandung" />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.screen}>
+        <ErrorState message={error} onRetry={() => loadHome()} />
+      </View>
+    );
+  }
+
+  const outsideBandung = locationInfo?.status === 'granted' && !locationInfo.inBandung;
+
   return (
-    <View style={styles.screen}>
-      <View style={styles.toolbar}>
-        <Text style={styles.subtitle}>
-          Trans Metro Pasundan dan Angkot Bandung
-        </Text>
-        <FilterChips
-          options={filterOptions}
-          selected={filter}
-          onSelect={(value) => setFilter(value)}
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => loadHome(true)}
+          tintColor={colors.accent}
         />
+      }
+    >
+      {outsideBandung ? (
+        <View style={styles.warningBanner}>
+          <Feather name="alert-triangle" size={16} color={colors.statusRedText} />
+          <View style={styles.bannerTextCol}>
+            <Text style={styles.warningTitle}>Di luar wilayah Kota Bandung</Text>
+            <Text style={styles.warningBody}>{locationInfo?.message}</Text>
+          </View>
+        </View>
+      ) : locationInfo?.message ? (
+        <View style={styles.infoBanner}>
+          <Feather name="map-pin" size={15} color={colors.accent} />
+          <Text style={styles.infoText}>{locationInfo.message}</Text>
+        </View>
+      ) : null}
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Halte terdekat</Text>
+          <Text style={styles.metaText}>{stops.length} titik Bandung</Text>
+        </View>
+
+        {outsideBandung ? (
+          <EmptyState
+            icon="map-pin"
+            title="Layanan khusus Kota Bandung"
+            description="Halte dan armada hanya ditampilkan untuk pengguna di wilayah Kota Bandung"
+          />
+        ) : nearestStops.length === 0 ? (
+          <EmptyState
+            icon="map-pin"
+            title="Belum ada data halte"
+            description="Tarik ke bawah untuk memuat ulang data halte"
+          />
+        ) : (
+          <View style={styles.stack}>
+            {nearestStops.map(({ stop, distanceKm }) => (
+              <StopCard key={stop.id} stop={stop} distanceKm={distanceKm} />
+            ))}
+          </View>
+        )}
       </View>
 
-      {loading ? (
-        <LoadingState message="Memuat daftar koridor" />
-      ) : error ? (
-        <ErrorState message={error} onRetry={() => fetchCorridors(filter)} />
-      ) : (
-        <FlatList
-          data={corridors}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => fetchCorridors(filter, true)}
-              tintColor={colors.accent}
-            />
-          }
-          renderItem={({ item }) => (
-            <CorridorCard corridor={item} onPress={() => handleOpenCorridor(item)} />
-          )}
-          ListEmptyComponent={
-            <EmptyState
-              icon="git-branch"
-              title="Belum ada koridor"
-              description="Tidak ditemukan rute koridor untuk filter yang dipilih"
-            />
-          }
-        />
-      )}
-    </View>
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Koridor favorit</Text>
+          <Pressable onPress={() => router.push('/(tabs)/corridors')}>
+            <Text style={styles.linkText}>Kelola rute</Text>
+          </Pressable>
+        </View>
+
+        {savedCorridors.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyTitle}>Belum ada koridor favorit</Text>
+            <Text style={styles.emptyDesc}>
+              Tandai rute harian rumah ke kantor atau kampus dari tab Koridor & Peta
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.stack}>
+            {savedCorridors.map((corridor) => (
+              <CorridorCard
+                key={corridor.id}
+                corridor={corridor}
+                isFavorite
+                onToggleFavorite={() => toggleFavoriteCorridor(corridor.id)}
+                onPress={() => openCorridor(corridor)}
+              />
+            ))}
+          </View>
+        )}
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Pantauan peta & armada aktif</Text>
+          <Text style={styles.metaText}>{vehicles.length} unit beroperasi</Text>
+        </View>
+
+        {outsideBandung ? (
+          <EmptyState
+            icon="navigation"
+            title="Armada tidak tersedia di lokasi Anda"
+            description="Pantauan armada aktif dibatasi pada koridor dalam Kota Bandung"
+          />
+        ) : activeVehicles.length === 0 ? (
+          <EmptyState
+            icon="navigation"
+            title="Belum ada armada aktif"
+            description="Tarik ke bawah untuk memperbarui posisi armada"
+          />
+        ) : (
+          <View style={styles.stack}>
+            {activeVehicles.map((vehicle) => (
+              <VehicleCard key={vehicle.id} vehicle={vehicle} />
+            ))}
+          </View>
+        )}
+      </View>
+    </ScrollView>
   );
 }
 
@@ -114,24 +244,86 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  toolbar: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    gap: spacing.sm,
-  },
-  subtitle: {
-    ...typography.meta,
-    color: colors.textSecondary,
-  },
-  listContent: {
+  content: {
     padding: spacing.lg,
-    flexGrow: 1,
+    gap: spacing.xxl,
   },
-  separator: {
-    height: spacing.md,
+  warningBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.control,
+    backgroundColor: colors.statusRedBg,
+    borderWidth: 1,
+    borderColor: colors.statusRedBorder,
+  },
+  bannerTextCol: {
+    flex: 1,
+    gap: 2,
+  },
+  warningTitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+    color: colors.statusRedText,
+  },
+  warningBody: {
+    ...typography.meta,
+    color: colors.statusRedText,
+  },
+  infoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.control,
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.accentBorder,
+  },
+  infoText: {
+    ...typography.meta,
+    color: colors.accent,
+    flex: 1,
+  },
+  section: {
+    gap: spacing.md,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sectionTitle: {
+    ...typography.sectionTitle,
+  },
+  metaText: {
+    ...typography.meta,
+    ...typography.tabular,
+  },
+  linkText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
+    color: colors.accent,
+  },
+  stack: {
+    gap: spacing.md,
+  },
+  emptyBox: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    gap: spacing.xs,
+  },
+  emptyTitle: {
+    ...typography.cardTitle,
+  },
+  emptyDesc: {
+    ...typography.body,
+    color: colors.textMuted,
   },
 });

@@ -4,16 +4,19 @@ import {
   loginUser,
   logoutUser,
   registerUser,
+  saveFavoriteCorridors,
 } from '../services/authService';
 import { AuthUser, LoginPayload, RegisterPayload } from '../types/transit';
 
 interface AuthContextValue {
   user: AuthUser | null;
   token: string | null;
+  favoriteCorridors: string[];
   isHydrating: boolean;
   signIn: (payload: LoginPayload) => Promise<void>;
   signUp: (payload: RegisterPayload) => Promise<void>;
   signOut: () => Promise<void>;
+  toggleFavoriteCorridor: (corridorId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -21,6 +24,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [favoriteCorridors, setFavoriteCorridors] = useState<string[]>([]);
   const [isHydrating, setIsHydrating] = useState(true);
 
   useEffect(() => {
@@ -30,6 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (active) {
           setToken(stored.token);
           setUser(stored.user);
+          setFavoriteCorridors(stored.favoriteCorridors);
         }
       })
       .finally(() => {
@@ -47,6 +52,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const result = await loginUser(payload);
     setToken(result.token);
     setUser(result.record);
+    if (Array.isArray(result.record.favorite_corridors)) {
+      setFavoriteCorridors(result.record.favorite_corridors);
+    }
   }, []);
 
   const signUp = useCallback(async (payload: RegisterPayload) => {
@@ -57,6 +65,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     setToken(result.token);
     setUser(result.record);
+    setFavoriteCorridors(
+      Array.isArray(result.record.favorite_corridors)
+        ? result.record.favorite_corridors
+        : []
+    );
   }, []);
 
   const signOut = useCallback(async () => {
@@ -65,8 +78,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
+  const toggleFavoriteCorridor = useCallback(
+    async (corridorId: string) => {
+      const next = favoriteCorridors.includes(corridorId)
+        ? favoriteCorridors.filter((id) => id !== corridorId)
+        : [...favoriteCorridors, corridorId];
+      setFavoriteCorridors(next);
+      await saveFavoriteCorridors(next, user);
+    },
+    [favoriteCorridors, user]
+  );
+
   return (
-    <AuthContext.Provider value={{ user, token, isHydrating, signIn, signUp, signOut }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        favoriteCorridors,
+        isHydrating,
+        signIn,
+        signUp,
+        signOut,
+        toggleFavoriteCorridor,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

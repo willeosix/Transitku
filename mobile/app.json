@@ -8,9 +8,16 @@
     "scheme": "transitku",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "TransitKu menggunakan lokasi GPS untuk mencari halte terdekat di Kota Bandung dan memvalidasi laporan kepadatan."
+      }
     },
     "android": {
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#FAFAFA",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -26,6 +33,13 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "TransitKu menggunakan lokasi GPS untuk mencari halte terdekat di Kota Bandung."
+        }
+      ],
+      "expo-notifications",
       [
         "expo-splash-screen",
         {

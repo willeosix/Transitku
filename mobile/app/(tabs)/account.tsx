@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -10,16 +10,29 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { LoadingState } from '../../src/components/LoadingState';
 import { useAuth } from '../../src/context/AuthContext';
 import { getApiErrorMessage } from '../../src/services/api';
+import { getCorridors } from '../../src/services/transitService';
 import { colors, radius, spacing, typography } from '../../src/theme/tokens';
+import { Corridor } from '../../src/types/transit';
 
 type AuthMode = 'login' | 'register';
 
 export default function AccountScreen() {
-  const { user, token, isHydrating, signIn, signUp, signOut } = useAuth();
+  const router = useRouter();
+  const {
+    user,
+    token,
+    favoriteCorridors,
+    isHydrating,
+    signIn,
+    signUp,
+    signOut,
+    toggleFavoriteCorridor,
+  } = useAuth();
   const [mode, setMode] = useState<AuthMode>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -28,6 +41,15 @@ export default function AccountScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [allCorridors, setAllCorridors] = useState<Corridor[]>([]);
+
+  useEffect(() => {
+    getCorridors()
+      .then(setAllCorridors)
+      .catch(() => setAllCorridors([]));
+  }, [user]);
+
+  const savedCorridorItems = allCorridors.filter((c) => favoriteCorridors.includes(c.id));
 
   const handleUseDemo = () => {
     setMode('login');
@@ -144,9 +166,49 @@ export default function AccountScreen() {
           </View>
           <View style={styles.divider} />
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Status autentikasi</Text>
-            <Text style={styles.detailValue}>Header Bearer aktif</Text>
+            <Text style={styles.detailLabel}>Koridor favorit tersinkron</Text>
+            <Text style={styles.detailValue}>{favoriteCorridors.length} rute</Text>
           </View>
+        </View>
+
+        <View style={styles.detailCard}>
+          <View style={styles.detailRow}>
+            <Text style={styles.sectionTitle}>Koridor favorit Anda</Text>
+            <Pressable onPress={() => router.push('/(tabs)/corridors')}>
+              <Text style={styles.linkText}>Tambah</Text>
+            </Pressable>
+          </View>
+
+          {savedCorridorItems.length === 0 ? (
+            <Text style={styles.emptyMeta}>
+              Belum ada koridor favorit tersimpan. Tandai rute di tab Koridor & Peta.
+            </Text>
+          ) : (
+            savedCorridorItems.map((corridor) => (
+              <View key={corridor.id} style={styles.favRow}>
+                <Pressable
+                  style={styles.favInfo}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/corridor/[id]',
+                      params: { id: corridor.id, code: corridor.code, name: corridor.name },
+                    })
+                  }
+                >
+                  <Text style={styles.favCode}>{corridor.code}</Text>
+                  <Text style={styles.favName} numberOfLines={1}>
+                    {corridor.name}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => toggleFavoriteCorridor(corridor.id)}
+                  hitSlop={8}
+                >
+                  <Feather name="trash-2" size={15} color={colors.textMuted} />
+                </Pressable>
+              </View>
+            ))
+          )}
         </View>
 
         <Pressable
@@ -207,7 +269,7 @@ export default function AccountScreen() {
             </Text>
             <Text style={styles.formSubtitle}>
               {mode === 'login'
-                ? 'Token JWT akan disisipkan otomatis pada setiap permintaan API'
+                ? 'Masuk untuk menyinkronkan koridor favorit dan laporan warga'
                 : 'Gunakan email aktif untuk mendaftar pada layanan akun TransitKu'}
             </Text>
           </View>
@@ -509,6 +571,46 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.lg,
     gap: spacing.md,
+  },
+  sectionTitle: {
+    ...typography.cardTitle,
+  },
+  linkText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
+    color: colors.accent,
+  },
+  emptyMeta: {
+    ...typography.body,
+    color: colors.textMuted,
+  },
+  favRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingVertical: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  favInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  favCode: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+    color: colors.accent,
+    ...typography.tabular,
+  },
+  favName: {
+    ...typography.body,
+    color: colors.textPrimary,
+    flex: 1,
   },
   detailRow: {
     flexDirection: 'row',

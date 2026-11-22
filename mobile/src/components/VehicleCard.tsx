@@ -3,11 +3,13 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing, typography } from '../theme/tokens';
 import { CrowdStatus, Vehicle } from '../types/transit';
+import { formatCoordinates } from '../utils/format';
 import { CrowdStatusBadge } from './CrowdStatusBadge';
 
 interface VehicleCardProps {
   vehicle: Vehicle;
   onReportPress?: (vehicle: Vehicle) => void;
+  onRemindPress?: (vehicle: Vehicle) => void;
 }
 
 const barColorByStatus: Record<CrowdStatus, string> = {
@@ -16,7 +18,11 @@ const barColorByStatus: Record<CrowdStatus, string> = {
   RED: colors.statusRedDot,
 };
 
-export function VehicleCard({ vehicle, onReportPress }: VehicleCardProps) {
+export function VehicleCard({
+  vehicle,
+  onReportPress,
+  onRemindPress,
+}: VehicleCardProps) {
   const corridorName = vehicle.expand?.corridor?.name ?? 'Koridor tidak terhubung';
   const corridorCode = vehicle.expand?.corridor?.code;
   const clampedLoad = Math.max(0, Math.min(100, Math.round(vehicle.load_factor ?? 0)));
@@ -60,7 +66,9 @@ export function VehicleCard({ vehicle, onReportPress }: VehicleCardProps) {
 
       <View style={styles.capacitySection}>
         <View style={styles.capacityLabelRow}>
-          <Text style={styles.metaText}>Keterisian kabin</Text>
+          <Text style={styles.metaText}>
+            GPS {formatCoordinates(vehicle.latitude, vehicle.longitude)}
+          </Text>
           <Text style={styles.loadValue}>{clampedLoad}%</Text>
         </View>
         <View style={styles.progressTrack}>
@@ -73,15 +81,27 @@ export function VehicleCard({ vehicle, onReportPress }: VehicleCardProps) {
         </View>
       </View>
 
-      {onReportPress ? (
+      {onRemindPress || onReportPress ? (
         <View style={styles.footerRow}>
-          <Pressable
-            style={({ pressed }) => [styles.reportBtn, pressed && styles.reportBtnPressed]}
-            onPress={() => onReportPress(vehicle)}
-          >
-            <Feather name="edit-3" size={14} color={colors.accent} />
-            <Text style={styles.reportBtnText}>Laporkan kepadatan armada ini</Text>
-          </Pressable>
+          {onRemindPress && vehicle.crowd_status === 'GREEN' ? (
+            <Pressable
+              style={({ pressed }) => [styles.actionBtn, pressed && styles.actionBtnPressed]}
+              onPress={() => onRemindPress(vehicle)}
+            >
+              <Feather name="bell" size={14} color={colors.statusGreenText} />
+              <Text style={styles.remindText}>Ingatkan sebelum tiba</Text>
+            </Pressable>
+          ) : null}
+
+          {onReportPress ? (
+            <Pressable
+              style={({ pressed }) => [styles.actionBtn, pressed && styles.actionBtnPressed]}
+              onPress={() => onReportPress(vehicle)}
+            >
+              <Feather name="edit-3" size={14} color={colors.accent} />
+              <Text style={styles.reportBtnText}>Lapor kepadatan</Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
     </View>
@@ -176,6 +196,7 @@ const styles = StyleSheet.create({
   },
   metaText: {
     ...typography.meta,
+    ...typography.tabular,
   },
   loadValue: {
     fontSize: 12,
@@ -195,19 +216,28 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   footerRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.lg,
     paddingTop: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  reportBtn: {
+  actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     paddingVertical: spacing.xs,
-    alignSelf: 'flex-start',
   },
-  reportBtnPressed: {
+  actionBtnPressed: {
     opacity: 0.7,
+  },
+  remindText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
+    color: colors.statusGreenText,
   },
   reportBtnText: {
     fontSize: 13,

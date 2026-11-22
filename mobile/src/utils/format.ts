@@ -1,4 +1,4 @@
-import { CrowdStatus, ZoneTag } from '../types/transit';
+import { CrowdStatus, ReportType, ZoneTag } from '../types/transit';
 
 export function formatRupiah(amount: number): string {
   const safe = Number.isFinite(amount) ? Math.round(amount) : 0;
@@ -31,6 +31,19 @@ export function formatCrowdLabel(status: CrowdStatus): string {
       return 'Sedang';
     case 'RED':
       return 'Padat';
+  }
+}
+
+export function formatReportTypeLabel(type?: ReportType): string {
+  switch (type) {
+    case 'FULL':
+      return 'Armada Penuh';
+    case 'QUEUE':
+      return 'Antrean Halte Panjang';
+    case 'TRAFFIC':
+      return 'Hambatan Macet';
+    default:
+      return 'Laporan Kepadatan';
   }
 }
 

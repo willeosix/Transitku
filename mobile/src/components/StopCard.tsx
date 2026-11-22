@@ -4,14 +4,21 @@ import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing, typography } from '../theme/tokens';
 import { Stop } from '../types/transit';
 import { formatCoordinates, formatZoneLabel } from '../utils/format';
+import { formatDistance } from '../utils/geo';
 
 interface StopCardProps {
   stop: Stop;
   showSequence?: boolean;
   isLast?: boolean;
+  distanceKm?: number;
 }
 
-export function StopCard({ stop, showSequence = false, isLast = false }: StopCardProps) {
+export function StopCard({
+  stop,
+  showSequence = false,
+  isLast = false,
+  distanceKm,
+}: StopCardProps) {
   return (
     <View style={styles.wrapper}>
       {showSequence ? (
@@ -28,15 +35,31 @@ export function StopCard({ stop, showSequence = false, isLast = false }: StopCar
           <Text style={styles.name} numberOfLines={2}>
             {stop.name}
           </Text>
-          <View style={styles.zoneTag}>
-            <Text style={styles.zoneText}>{formatZoneLabel(stop.zone_tag)}</Text>
+          <View style={styles.badgesRow}>
+            {typeof distanceKm === 'number' ? (
+              <View style={styles.distanceTag}>
+                <Text style={styles.distanceText}>{formatDistance(distanceKm)}</Text>
+              </View>
+            ) : null}
+            <View style={styles.zoneTag}>
+              <Text style={styles.zoneText}>{formatZoneLabel(stop.zone_tag)}</Text>
+            </View>
           </View>
         </View>
+
+        {stop.facilities ? (
+          <View style={styles.detailRow}>
+            <View style={styles.iconSlot}>
+              <Feather name="layers" size={14} color={colors.textMuted} />
+            </View>
+            <Text style={styles.facilityText}>{stop.facilities}</Text>
+          </View>
+        ) : null}
 
         {stop.nearby_landmark ? (
           <View style={styles.detailRow}>
             <View style={styles.iconSlot}>
-              <Feather name="map-pin" size={15} color={colors.textMuted} />
+              <Feather name="map-pin" size={14} color={colors.textMuted} />
             </View>
             <Text style={styles.landmarkText}>{stop.nearby_landmark}</Text>
           </View>
@@ -44,7 +67,7 @@ export function StopCard({ stop, showSequence = false, isLast = false }: StopCar
 
         <View style={styles.detailRow}>
           <View style={styles.iconSlot}>
-            <Feather name="crosshair" size={15} color={colors.textMuted} />
+            <Feather name="crosshair" size={14} color={colors.textMuted} />
           </View>
           <Text style={styles.coordText}>
             {formatCoordinates(stop.latitude, stop.longitude)}
@@ -108,6 +131,26 @@ const styles = StyleSheet.create({
     ...typography.cardTitle,
     flex: 1,
   },
+  badgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  distanceTag: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.tag,
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.accentBorder,
+  },
+  distanceText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+    color: colors.accent,
+    ...typography.tabular,
+  },
   zoneTag: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
@@ -131,6 +174,11 @@ const styles = StyleSheet.create({
     width: 18,
     paddingTop: 2,
     alignItems: 'center',
+  },
+  facilityText: {
+    ...typography.body,
+    color: colors.textPrimary,
+    flex: 1,
   },
   landmarkText: {
     ...typography.body,
